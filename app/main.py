@@ -1,14 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from auth.router import router as auth_router
+from .auth import router as auth_router
+from .api.routes import router as api_router
+from .database import create_indexes
 
 app = FastAPI(title="EcoSmart")
 
+# Configure CORS
 origins = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
-    "http://localhost:3000",  
-    "http://127.0.0.1:3000",  
+    "http://localhost:3000",  # For frontend development
+    "http://127.0.0.1:3000",  # For frontend development
 ]
 
 app.add_middleware(
@@ -20,7 +23,14 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
+# Include routers
 app.include_router(auth_router)
+app.include_router(api_router)
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database indexes on startup"""
+    await create_indexes()
 
 @app.get("/")
 def root():
