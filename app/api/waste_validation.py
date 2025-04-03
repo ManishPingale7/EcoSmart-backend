@@ -6,8 +6,8 @@ from ..models import WasteReportValidationRequest, WasteReportValidationResponse
 from ..services.gemini_service import validate_waste_image
 import base64
 
-# Remove "/waste" prefix as it will be included under "/api" already
-router = APIRouter(tags=["Waste Validation"])
+# Use the same tag as the main API router to avoid duplication in Swagger docs
+router = APIRouter()
 
 # TESTING ONLY: Comment out the current_authority dependency
 # To re-enable auth, uncomment the parameter below and update function calls

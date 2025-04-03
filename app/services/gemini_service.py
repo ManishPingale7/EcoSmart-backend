@@ -150,6 +150,25 @@ async def validate_waste_image(
             "additional_data": {"error": f"Invalid base64 image: {str(e)}"}
         }
     
+    # Check for API key issues
+    if not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY == "YOUR_GEMINI_API_KEY_HERE":
+        print("ERROR: No valid GOOGLE_API_KEY found in your .env file!")
+        return {
+            "is_valid": False,
+            "message": "Configuration error: Missing or invalid Gemini API key",
+            "confidence_score": 0,
+            "waste_types": [],
+            "severity": "Clean",
+            "dustbins": [],
+            "recyclable_items": [],
+            "time_analysis": {},
+            "description_match": {},
+            "additional_data": {
+                "error": "Please add a valid GOOGLE_API_KEY to your .env file. Get one from https://ai.google.dev/",
+                "help": "After getting your API key, restart the server for changes to take effect."
+            }
+        }
+    
     # Construct the prompt for Gemini
     prompt = f"""
     Analyze this image of a potentially dirty/unclean area. 
