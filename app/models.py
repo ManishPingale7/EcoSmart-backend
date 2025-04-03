@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
+from bson import ObjectId
 
 class AuthorityBase(BaseModel):
     username: str
@@ -126,57 +127,54 @@ class WasteReportStatus(str, Enum):
     RESOLVED = "resolved"
 
 class WasteReport(BaseModel):
-    id: str
-    validation_result: Dict[str, Any]
-    submitted_by: Dict[str, Any] = {}
-    severity: str
-    location: str
-    description: Optional[str] = None
-    timestamp: str
+    id: Optional[str] = Field(None, alias="_id")
     is_valid: bool
-    confidence_score: float = 0
-    status: WasteReportStatus = WasteReportStatus.PENDING
-    created_at: datetime
-    updated_at: datetime
-    comments: Optional[List[Dict[str, Any]]] = []
-    
+    message: str
+    confidence_score: float
+    severity: SeverityLevel
+    location: str
+    description: str
+    timestamp: datetime
+    waste_types: str
+    waste_type_confidences: Optional[str] = None
+    dustbin_present: bool
+    dustbin_full: Optional[bool] = None
+    dustbin_fullness_percentage: Optional[float] = None
+    waste_outside: Optional[bool] = None
+    waste_outside_description: Optional[str] = None
+    recyclable_items: str
+    is_recyclable: bool
+    recyclable_notes: Optional[str] = None
+    time_appears_valid: bool
+    lighting_condition: Optional[str] = None
+    time_analysis_notes: Optional[str] = None
+    description_matches_image: bool
+    description_match_confidence: Optional[float] = None
+    description_match_notes: Optional[str] = None
+    additional_data: Optional[Dict] = {}
+    submitted_by: Optional[Dict] = {}
+    status: str = "pending"
+
     class Config:
-        from_attributes = True
+        populate_by_name = True
+        arbitrary_types_allowed = True
         json_encoders = {
-            datetime: lambda dt: dt.isoformat()
+            datetime: lambda v: v.isoformat(),
+            ObjectId: lambda v: str(v)
         }
 
     @classmethod
-    def from_mongo(cls, mongo_doc: Dict[str, Any]):
-        """
-        Convert a MongoDB document to a Pydantic model, handling ObjectId conversion
-        """
-        if mongo_doc is None:
+    def from_mongo(cls, data: dict):
+        """Convert MongoDB document to WasteReport model"""
+        if not data:
             return None
             
-        # Convert _id to id string
-        if "_id" in mongo_doc:
-            mongo_doc["id"] = str(mongo_doc.pop("_id"))
+        # Convert _id to string if it exists
+        if "_id" in data:
+            data["_id"] = str(data["_id"])
             
-        # Convert any ObjectId in nested dictionaries to strings
-        cls._convert_object_ids(mongo_doc)
-        
-        return cls(**mongo_doc)
-    
-    @staticmethod
-    def _convert_object_ids(data):
-        """Recursively convert all ObjectId instances to strings"""
-        from bson import ObjectId
-        
-        if isinstance(data, dict):
-            for key, value in list(data.items()):
-                if isinstance(value, ObjectId):
-                    data[key] = str(value)
-                elif isinstance(value, (dict, list)):
-                    WasteReport._convert_object_ids(value)
-        elif isinstance(data, list):
-            for i, item in enumerate(data):
-                if isinstance(item, ObjectId):
-                    data[i] = str(item)
-                elif isinstance(item, (dict, list)):
-                    WasteReport._convert_object_ids(item) 
+        # Convert timestamp to datetime if it's a string
+        if "timestamp" in data and isinstance(data["timestamp"], str):
+            data["timestamp"] = datetime.fromisoformat(data["timestamp"])
+            
+        return cls(**data) 
