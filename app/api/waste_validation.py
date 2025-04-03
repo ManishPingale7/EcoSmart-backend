@@ -103,12 +103,7 @@ async def save_report_if_severe(validation_result: dict, user_data: dict = None)
         
         # Send notification to admin
         try:
-            await notification_service.send_waste_report_alert(
-                severity=severity,
-                location=validation_result.get("location", ""),
-                description=validation_result.get("description", ""),
-                waste_types=validation_result.get("waste_types", {}).get("types", "")
-            )
+            await notification_service.send_waste_report_alert(report_data)
             logging.info(f"Notification sent for waste report {saved_report.get('id')}")
         except Exception as e:
             logging.error(f"Failed to send notification for waste report {saved_report.get('id')}: {str(e)}")

@@ -1,6 +1,7 @@
 from twilio.rest import Client
 from ..config import get_settings
 import logging
+from datetime import datetime
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -22,19 +23,25 @@ class NotificationService:
             bool: True if message was sent successfully, False otherwise
         """
         try:
-            # Format the message
+            # Extract key information
             severity = report_data.get("severity", "Unknown")
             location = report_data.get("location", "Unknown location")
-            description = report_data.get("description", "No description provided")
             waste_types = report_data.get("waste_types", "Unknown types")
+            confidence = report_data.get("confidence_score", 0)
             
+            # Format timestamp
+            timestamp = report_data.get("timestamp", datetime.utcnow())
+            if isinstance(timestamp, str):
+                timestamp = datetime.fromisoformat(timestamp)
+            formatted_time = timestamp.strftime("%H:%M %d/%m")
+            
+            # Create concise message (under 160 chars)
             message = (
-                f"🚨 New Waste Report Alert!\n\n"
-                f"Severity: {severity}\n"
-                f"Location: {location}\n"
-                f"Description: {description}\n"
-                f"Waste Types: {waste_types}\n\n"
-                f"Please check the dashboard for details."
+                f"🚨 Waste Alert: {severity}\n"
+                f"📍 {location}\n"
+                f"⏰ {formatted_time}\n"
+                f"🗑️ {waste_types}\n"
+                f"📊 {confidence:.0f}% conf"
             )
             
             # Send the message

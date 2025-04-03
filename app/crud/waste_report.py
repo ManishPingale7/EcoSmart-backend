@@ -2,9 +2,13 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from bson import ObjectId
 from app.database import database
+from app.services.notification_service import NotificationService
 
 # Collection name
 waste_reports_collection = database["waste_reports"]
+
+# Initialize notification service
+notification_service = NotificationService()
 
 async def create_waste_report(report_data: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -29,6 +33,13 @@ async def create_waste_report(report_data: Dict[str, Any]) -> Dict[str, Any]:
     
     # Add the ID to the data
     report_data["id"] = str(result.inserted_id)
+    
+    # Send SMS notification
+    try:
+        await notification_service.send_waste_report_alert(report_data)
+    except Exception as e:
+        # Log the error but don't fail the report creation
+        print(f"Failed to send SMS notification: {str(e)}")
     
     return report_data
 
