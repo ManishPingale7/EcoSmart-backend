@@ -65,7 +65,10 @@ async def get_waste_reports(
         location_query: Text search in location field
         
     Returns:
-        List of waste report documents
+        List of waste report documents sorted by:
+        1. Timestamp (descending)
+        2. Severity (Critical > High > Medium > Low > Clean)
+        3. Confidence score (descending)
     """
     # Build query
     query = {}
@@ -79,14 +82,35 @@ async def get_waste_reports(
     if location_query:
         query["location"] = {"$regex": location_query, "$options": "i"}
     
-    # Execute query
-    cursor = waste_reports_collection.find(query).skip(skip).limit(limit).sort("created_at", -1)
+    # Define severity order for sorting
+    severity_order = {
+        "Critical": 5,
+        "High": 4,
+        "Medium": 3,
+        "Low": 2,
+        "Clean": 1
+    }
+    
+    # Execute query with compound sort
+    cursor = waste_reports_collection.find(query).skip(skip).limit(limit)
     
     # Convert to list and add string IDs
     reports = []
     async for report in cursor:
         report["id"] = str(report["_id"])
+        # Convert timestamp to datetime if it's a string
+        if isinstance(report.get("timestamp"), str):
+            report["timestamp"] = datetime.fromisoformat(report["timestamp"])
         reports.append(report)
+    
+    # Sort the reports according to the specified criteria
+    reports.sort(
+        key=lambda x: (
+            -x["timestamp"].timestamp() if isinstance(x["timestamp"], datetime) else 0,  # Negative for descending order
+            -severity_order.get(x["severity"], 0),  # Negative for descending order
+            -x.get("confidence_score", 0)  # Negative for descending order
+        )
+    )
         
     return reports
 
