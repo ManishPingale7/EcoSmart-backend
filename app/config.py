@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/auth/google/callback"
     
+    # Gemini API settings
+    GOOGLE_API_KEY: str
+    
     class Config:
         env_file = ".env"
 
