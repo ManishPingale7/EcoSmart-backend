@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .auth import router as auth_router
 from .api.routes import router as api_router
+from .api.waste_categorization import router as waste_categorization_router
 from .database import create_indexes
 
 app = FastAPI(title="EcoSmart")
@@ -26,6 +27,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth_router)
 app.include_router(api_router)
+app.include_router(waste_categorization_router, prefix="/waste-categorization", tags=["Waste Categorization"])
 
 @app.on_event("startup")
 async def startup_event():
