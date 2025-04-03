@@ -120,26 +120,29 @@ async def google_callback(code: str):
 
             # Get or create user
             user = await user_crud.get_or_create_google_user(user_info)
-
-            return JSONResponse(
-                content={
-                    "message": "Login successful!",
-                    "user": {
-                        "email": user["email"],
-                        "name": user["name"],
-                        "picture": user.get("picture")
-                    }
-                },
-                headers={
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Credentials": "true",
-                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                    "Access-Control-Allow-Headers": "*"
-                }
+            
+            # Prepare user data for the redirect
+            user_data = {
+                "email": user["email"],
+                "name": user["name"],
+                "picture": user.get("picture", "")
+            }
+            
+            # Encode user data
+            import base64
+            import json
+            encoded_data = base64.b64encode(json.dumps(user_data).encode()).decode()
+            
+            # Redirect to frontend with data
+            frontend_url = "http://localhost:3000"
+            return RedirectResponse(
+                f"{frontend_url}/?success=true&user={encoded_data}",
+                status_code=302
             )
 
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Login failed: {str(e)}"
+        # Redirect to frontend with error
+        return RedirectResponse(
+            f"http://localhost:3000/login?error={str(e)}",
+            status_code=302
         )
