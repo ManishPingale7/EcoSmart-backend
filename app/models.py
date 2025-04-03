@@ -126,6 +126,20 @@ class WasteReportStatus(str, Enum):
     IN_PROGRESS = "in_progress"
     RESOLVED = "resolved"
 
+class CleanupVerification(BaseModel):
+    is_same_location: bool
+    location_match_confidence: float
+    location_match_reasons: List[str]
+    cleanup_successful: bool
+    cleanup_confidence_score: float
+    observations: str
+    before_condition: str
+    after_condition: str
+    matching_features: List[str]
+    concerns: List[str]
+    verified_by: Optional[Dict[str, Any]] = None
+    verification_timestamp: datetime
+
 class WasteReport(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
     is_valid: bool
@@ -154,6 +168,10 @@ class WasteReport(BaseModel):
     additional_data: Optional[Dict] = {}
     submitted_by: Optional[Dict] = {}
     status: str = "pending"
+    image: Optional[str] = None  # Base64 encoded image
+    cleanup_verification: Optional[CleanupVerification] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         populate_by_name = True
@@ -177,4 +195,11 @@ class WasteReport(BaseModel):
         if "timestamp" in data and isinstance(data["timestamp"], str):
             data["timestamp"] = datetime.fromisoformat(data["timestamp"])
             
-        return cls(**data) 
+        return cls(**data)
+
+class CleanupVerificationResponse(BaseModel):
+    """Simplified response model for cleanup verification"""
+    status: str  # "verified", "not_clean", or "location_mismatch"
+    is_same_location: bool
+    is_clean: bool
+    improvement_percentage: float 

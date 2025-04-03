@@ -61,6 +61,9 @@ async def save_report_if_severe(validation_result: dict, user_data: dict = None)
             "description": validation_result.get("description", ""),
             "timestamp": validation_result.get("timestamp", datetime.utcnow().isoformat()),
             
+            # Store the original image
+            "image": validation_result.get("image", ""),  # Store the base64 image
+            
             # Waste Types
             "waste_types": validation_result.get("waste_types", {}).get("types", ""),
             "waste_type_confidences": validation_result.get("waste_types", {}).get("confidence", ""),
@@ -178,6 +181,7 @@ async def validate_waste_report(
         validation_result["description"] = description
         validation_result["timestamp"] = timestamp.isoformat()
         validation_result["filename"] = image.filename
+        validation_result["image"] = base64_image  # Store the base64 image
         
         # Convert the validation result to our response model
         response = WasteReportValidationResponse(
@@ -328,6 +332,7 @@ async def validate_waste_report_base64(
         validation_result["location"] = request.location
         validation_result["description"] = request.description
         validation_result["timestamp"] = request.timestamp.isoformat()
+        validation_result["image"] = request.image  # Store the base64 image
         
         # Convert the validation result to our response model
         response = WasteReportValidationResponse(

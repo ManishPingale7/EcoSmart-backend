@@ -187,4 +187,34 @@ async def delete_waste_report(report_id: str) -> bool:
         True if deleted, False otherwise
     """
     result = await waste_reports_collection.delete_one({"_id": ObjectId(report_id)})
-    return result.deleted_count > 0 
+    return result.deleted_count > 0
+
+async def update_waste_report(report_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Update a waste report with new data
+    
+    Args:
+        report_id: The ID of the waste report
+        update_data: Data to update
+        
+    Returns:
+        The updated waste report document or None if not found
+    """
+    # Add updated_at timestamp
+    update_data["updated_at"] = datetime.utcnow()
+    
+    # Convert string ID to ObjectId
+    try:
+        report_id = ObjectId(report_id)
+    except Exception:
+        raise ValueError(f"Invalid report ID format: {report_id}")
+    
+    # Update the document
+    result = await waste_reports_collection.update_one(
+        {"_id": report_id},
+        {"$set": update_data}
+    )
+    
+    if result.modified_count:
+        return await get_waste_report(str(report_id))
+    return None 

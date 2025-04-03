@@ -2,9 +2,11 @@ import os
 import base64
 import httpx
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from app.config import get_settings
+from fastapi import HTTPException   
 import io
+import json
 try:
     from PIL import Image
     PILLOW_AVAILABLE = True
@@ -337,7 +339,6 @@ async def validate_waste_image(
             print(f"Raw response from Gemini: {response_text[:200]}...")
             
             # Parse the JSON from the text response
-            import json
             try:
                 # Try to clean up the response if it's not proper JSON
                 cleaned_text = response_text.strip()
@@ -480,3 +481,356 @@ async def validate_waste_image(
                 "traceback": traceback_str
             }
         } 
+
+async def compare_cleanup_images(before_image: str, after_image: str) -> dict:
+    """
+    Compare before and after images to verify cleanup with comprehensive AI-based validations.
+    """
+    try:
+        print("\n=== Starting Image Comparison Process ===")
+        print(f"Before image length: {len(before_image)}")
+        print(f"After image length: {len(after_image)}")
+        
+        # Check if images are identical
+        if before_image == after_image:
+            print("✓ Detected identical images")
+            return {
+                "is_same_location": True,
+                "is_clean": False,
+                "improvement_percentage": 0,
+                "verification_details": {
+                    "location_confidence": 100,
+                    "location_reasons": ["Identical images detected"],
+                    "waste_analysis": {
+                        "before_types": [],
+                        "after_types": [],
+                        "waste_removed": False,
+                        "new_waste": False
+                    },
+                    "cleanup_quality": {
+                        "is_thorough": False,
+                        "remaining_issues": ["No cleanup performed - identical images"],
+                        "sanitization_level": "poor"
+                    },
+                    "temporal_analysis": {
+                        "is_recent": False,
+                        "lighting_consistent": True,
+                        "recent_activity": False
+                    },
+                    "overall_confidence": 100,
+                    "notes": "Identical images detected - no cleanup performed"
+                }
+            }
+
+        # Validate image formats
+        try:
+            # Check if images are valid base64
+            before_decoded = base64.b64decode(before_image)
+            after_decoded = base64.b64decode(after_image)
+            print("✓ Both images are valid base64")
+        except Exception as e:
+            print(f"✗ Invalid base64 image: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid image format")
+
+        # Prepare detailed prompt for Gemini
+        print("\n=== Preparing Gemini Prompt ===")
+        prompt = f"""
+        Analyze these two images of a waste cleanup operation:
+        1. Before image (showing waste/dirty area)
+        2. After image (showing cleaned area)
+
+        IMPORTANT LOCATION VERIFICATION RULES:
+        1. Be VERY lenient with location matching
+        2. Consider it the same location if ANY of these are true:
+           - Same general area is visible
+           - Any landmarks match (even partially)
+           - Similar viewing angle
+           - Similar lighting conditions
+           - Same type of surface/ground
+        3. Only mark as different location if COMPLETELY different area
+
+        Perform the following validations:
+
+        1. Location Verification (BE LENIENT):
+           - Look for ANY matching features
+           - Consider general area similarity
+           - Check viewing angle (roughly similar is okay)
+           - Verify lighting (similar is okay)
+           - Look for ANY unique features in both
+
+        2. Waste Detection and Analysis:
+           - Identify types of waste in before image
+           - Check if those specific waste items are gone in after image
+           - Look for any new waste that might have appeared
+           - Verify proper disposal (not just moved elsewhere)
+
+        3. Cleanup Quality Assessment:
+           - Check if cleaning was thorough
+           - Look for any remaining traces of waste
+           - Verify if the area is properly sanitized
+           - Check for proper waste disposal methods
+
+        4. Temporal Analysis:
+           - Check if lighting conditions are consistent
+           - Verify if the cleanup appears recent
+           - Look for signs of recent cleaning activity
+
+        Provide your analysis in this JSON format:
+        {{
+            "is_same_location": boolean,
+            "location_match_confidence": number (0-100),
+            "location_match_reasons": ["reason1", "reason2"],
+            "waste_analysis": {{
+                "before_waste_types": ["type1", "type2"],
+                "after_waste_types": ["type1", "type2"],
+                "waste_removed": boolean,
+                "new_waste_detected": boolean
+            }},
+            "cleanup_quality": {{
+                "is_thorough": boolean,
+                "remaining_issues": ["issue1", "issue2"],
+                "sanitization_level": "poor/fair/good/excellent"
+            }},
+            "temporal_analysis": {{
+                "is_recent": boolean,
+                "lighting_consistent": boolean,
+                "recent_activity_signs": boolean
+            }},
+            "overall_verification": {{
+                "verified": boolean,
+                "confidence_score": number (0-100),
+                "verification_notes": "string"
+            }}
+        }}
+        """
+        print("✓ Prompt prepared")
+
+        # Call Gemini API
+        print("\n=== Calling Gemini API ===")
+        start_time = datetime.now()
+        response = await call_gemini_api(prompt, [before_image, after_image])
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+        print(f"✓ Gemini API call completed in {duration:.2f} seconds")
+        print(f"Raw response length: {len(response)}")
+        
+        # Parse the response
+        print("\n=== Parsing Gemini Response ===")
+        try:
+            result = json.loads(response)
+            print("✓ Successfully parsed JSON response")
+            print(f"Response keys: {list(result.keys())}")
+            
+            # Extract and validate all fields
+            is_same_location = bool(result.get("is_same_location", False))
+            location_confidence = float(result.get("location_match_confidence", 0))
+            location_reasons = result.get("location_match_reasons", [])
+            
+            print(f"\n=== Location Analysis ===")
+            print(f"Initial is_same_location: {is_same_location}")
+            print(f"Location confidence: {location_confidence}")
+            print(f"Location reasons: {location_reasons}")
+            
+            # If location confidence is high enough, consider it same location
+            if location_confidence >= 30:  # Lower threshold for location matching
+                is_same_location = True
+                print("✓ Location confidence threshold met, marking as same location")
+            
+            waste_analysis = result.get("waste_analysis", {})
+            before_waste = waste_analysis.get("before_waste_types", [])
+            after_waste = waste_analysis.get("after_waste_types", [])
+            waste_removed = bool(waste_analysis.get("waste_removed", False))
+            new_waste = bool(waste_analysis.get("new_waste_detected", False))
+            
+            print(f"\n=== Waste Analysis ===")
+            print(f"Before waste types: {before_waste}")
+            print(f"After waste types: {after_waste}")
+            print(f"Waste removed: {waste_removed}")
+            print(f"New waste detected: {new_waste}")
+            
+            cleanup_quality = result.get("cleanup_quality", {})
+            is_thorough = bool(cleanup_quality.get("is_thorough", False))
+            remaining_issues = cleanup_quality.get("remaining_issues", [])
+            sanitization = cleanup_quality.get("sanitization_level", "poor")
+            
+            print(f"\n=== Cleanup Quality ===")
+            print(f"Is thorough: {is_thorough}")
+            print(f"Remaining issues: {remaining_issues}")
+            print(f"Sanitization level: {sanitization}")
+            
+            temporal = result.get("temporal_analysis", {})
+            is_recent = bool(temporal.get("is_recent", False))
+            lighting_ok = bool(temporal.get("lighting_consistent", False))
+            activity_signs = bool(temporal.get("recent_activity_signs", False))
+            
+            print(f"\n=== Temporal Analysis ===")
+            print(f"Is recent: {is_recent}")
+            print(f"Lighting consistent: {lighting_ok}")
+            print(f"Activity signs: {activity_signs}")
+            
+            overall = result.get("overall_verification", {})
+            verified = bool(overall.get("verified", False))
+            confidence = float(overall.get("confidence_score", 0))
+            notes = overall.get("verification_notes", "")
+            
+            print(f"\n=== Overall Verification ===")
+            print(f"Verified: {verified}")
+            print(f"Confidence score: {confidence}")
+            print(f"Notes: {notes}")
+            
+            # Calculate improvement percentage based on multiple factors
+            improvement_factors = [
+                location_confidence / 100,
+                1.0 if waste_removed else 0.0,
+                0.0 if new_waste else 1.0,
+                1.0 if is_thorough else 0.5,
+                0.8 if sanitization in ["good", "excellent"] else 0.4,
+                1.0 if is_recent else 0.7,
+                1.0 if lighting_ok else 0.6,
+                1.0 if activity_signs else 0.5
+            ]
+            improvement_percentage = sum(improvement_factors) / len(improvement_factors) * 100
+            
+            print(f"\n=== Final Results ===")
+            print(f"Final is_same_location: {is_same_location}")
+            print(f"Final is_clean: {verified and is_thorough and not new_waste}")
+            print(f"Improvement percentage: {improvement_percentage:.2f}%")
+            
+            return {
+                "is_same_location": is_same_location,
+                "is_clean": verified and is_thorough and not new_waste,
+                "improvement_percentage": improvement_percentage,
+                "verification_details": {
+                    "location_confidence": location_confidence,
+                    "location_reasons": location_reasons,
+                    "waste_analysis": {
+                        "before_types": before_waste,
+                        "after_types": after_waste,
+                        "waste_removed": waste_removed,
+                        "new_waste": new_waste
+                    },
+                    "cleanup_quality": {
+                        "is_thorough": is_thorough,
+                        "remaining_issues": remaining_issues,
+                        "sanitization_level": sanitization
+                    },
+                    "temporal_analysis": {
+                        "is_recent": is_recent,
+                        "lighting_consistent": lighting_ok,
+                        "recent_activity": activity_signs
+                    },
+                    "overall_confidence": confidence,
+                    "notes": notes
+                }
+            }
+            
+        except json.JSONDecodeError as e:
+            print(f"✗ Error parsing JSON response: {str(e)}")
+            print(f"Raw response: {response[:500]}...")  # Print first 500 chars of response
+            return {
+                "is_same_location": False,
+                "is_clean": False,
+                "improvement_percentage": 0,
+                "verification_details": {
+                    "error": "Failed to parse AI response"
+                }
+            }
+
+    except Exception as e:
+        print(f"✗ Error in compare_cleanup_images: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return {
+            "is_same_location": False,
+            "is_clean": False,
+            "improvement_percentage": 0,
+            "verification_details": {
+                "error": str(e)
+            }
+        } 
+
+async def call_gemini_api(prompt: str, images: List[str]) -> str:
+    """
+    Make an API call to Gemini with the given prompt and images.
+    Returns the raw response text from Gemini.
+    """
+    try:
+        # Construct the request to Gemini
+        model = "gemini-2.0-flash"
+        api_url = f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": settings.GOOGLE_API_KEY
+        }
+
+        # Prepare the content parts
+        content_parts = [{"text": prompt}]
+        
+        # Add images to the content parts
+        for image in images:
+            content_parts.append({
+                "inline_data": {
+                    "mime_type": "image/jpeg",
+                    "data": image
+                }
+            })
+
+        data = {
+            "contents": [{
+                "role": "user",
+                "parts": content_parts
+            }],
+            "generationConfig": {
+                "temperature": 0.2,
+                "topK": 32,
+                "topP": 0.95,
+                "maxOutputTokens": 4096,
+            }
+        }
+
+        print(f"\n=== Making Gemini API Request ===")
+        print(f"Using model: {model}")
+        print(f"API URL: {api_url}")
+        print(f"Number of images: {len(images)}")
+        print(f"Prompt length: {len(prompt)}")
+
+        # Make the API request
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(api_url, json=data, headers=headers)
+            
+            if response.status_code != 200:
+                error_detail = f"Gemini API error: {response.status_code} - {response.text}"
+                print(f"✗ API Error: {error_detail}")
+                raise HTTPException(status_code=500, detail=error_detail)
+            
+            result = response.json()
+            response_text = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "{}")
+            
+            print(f"✓ API Response received")
+            print(f"Response length: {len(response_text)}")
+            
+            # Clean the response text if it contains markdown formatting
+            if "```json" in response_text:
+                # Extract JSON from markdown code block
+                json_start = response_text.find("```json") + 7
+                json_end = response_text.rfind("```")
+                if json_end > json_start:
+                    response_text = response_text[json_start:json_end].strip()
+            elif "```" in response_text:
+                # Extract JSON from generic code block
+                json_start = response_text.find("```") + 3
+                json_end = response_text.rfind("```")
+                if json_end > json_start:
+                    response_text = response_text[json_start:json_end].strip()
+            
+            print(f"Cleaned response length: {len(response_text)}")
+            return response_text
+
+    except Exception as e:
+        print(f"✗ Error in call_gemini_api: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error calling Gemini API: {str(e)}"
+        ) 

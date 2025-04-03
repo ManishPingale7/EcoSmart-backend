@@ -1,5 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient
-from .config import get_settings
+from app.config import get_settings
 
 settings = get_settings()
 
@@ -9,6 +9,12 @@ database = client[settings.DATABASE_NAME]
 # Collections
 authorities_collection = database.authorities
 users_collection = database.users
+
+async def get_database():
+    """
+    Get the database instance.
+    """
+    return database
 
 # Indexes
 async def create_indexes():
