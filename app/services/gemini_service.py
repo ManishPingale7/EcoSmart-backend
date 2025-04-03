@@ -141,10 +141,20 @@ async def validate_waste_image(
             "is_valid": False,
             "message": f"Error with image data: Invalid base64 encoding - {str(e)}",
             "confidence_score": 0,
-            "waste_types": [],
-            "severity": None,
-            "dustbins": [],
-            "recyclable_items": [],
+            "waste_types": {"types": "", "confidence": 0.0},
+            "severity": "Clean",
+            "dustbins": {
+                "is_present": False,
+                "is_full": False,
+                "fullness_percentage": 0,
+                "waste_outside": False,
+                "waste_outside_description": ""
+            },
+            "recyclable_items": {
+                "items": "",
+                "recyclable": False,
+                "notes": ""
+            },
             "time_analysis": {},
             "description_match": {},
             "additional_data": {"error": f"Invalid base64 image: {str(e)}"}
@@ -157,10 +167,20 @@ async def validate_waste_image(
             "is_valid": False,
             "message": "Configuration error: Missing or invalid Gemini API key",
             "confidence_score": 0,
-            "waste_types": [],
+            "waste_types": {"types": "", "confidence": 0.0},
             "severity": "Clean",
-            "dustbins": [],
-            "recyclable_items": [],
+            "dustbins": {
+                "is_present": False,
+                "is_full": False,
+                "fullness_percentage": 0,
+                "waste_outside": False,
+                "waste_outside_description": ""
+            },
+            "recyclable_items": {
+                "items": "",
+                "recyclable": False,
+                "notes": ""
+            },
             "time_analysis": {},
             "description_match": {},
             "additional_data": {
@@ -181,7 +201,7 @@ async def validate_waste_image(
     Instructions:
     1. Is this image clearly showing a dirty or unclean area? Answer yes only if dustbins are overflowing or there is significant waste outside designated areas.
     2. Calculate a confidence score (0-100) based on image clarity, time, and location. Be conservative with high scores.
-    3. Identify specific waste types visible in the image as comma-separated values.
+    3. Identify specific waste types visible in the image as comma-separated values, and provide confidence scores (0-1) for each type as comma-separated values.
     4. Categorize the severity of the waste/dirt into one of these levels:
        - "Clean" (0-25%): Properly maintained dustbins, minimal or no litter outside bins
        - "Low" (26-50%): Some litter but mostly contained, dustbins not overflowing
@@ -190,7 +210,7 @@ async def validate_waste_image(
        - "Critical" (91-100%): Major public health concern, completely blocked pathways
     5. Identify if there are any dustbins present in the image. If yes, determine if they are full or empty, and estimate what percentage they are full (0-100%).
     6. Check if there is any waste visible outside of dustbins and describe it.
-    7. Analyze the recyclability of the waste visible in the image. Identify which items could be recycled.
+    7. Analyze the recyclability of the waste visible in the image. List recyclable items as comma-separated values.
     8. Validate if the image time makes sense (e.g., if it appears to be a night scene but timestamp suggests daytime, flag it).
     9. Consider the provided description and assess if it matches what's visible in the image.
     
@@ -201,23 +221,23 @@ async def validate_waste_image(
         "is_valid": true/false,
         "message": "Your analysis summary here",
         "confidence_score": 0-100,
-        "waste_types": [
-            {{ "type": "waste type name", "confidence": 0.0-1.0 }},
-            ...
-        ],
+        "waste_types": {{
+            "types": "waste type 1, waste type 2, waste type 3",
+            "confidence": "0.8, 0.7, 0.9"  # Confidence scores matching each waste type
+        }},
         "severity": "Clean/Low/Medium/High/Critical",
-        "dustbins": [
-            {{
-                "is_present": true/false,
-                "is_full": true/false,
-                "fullness_percentage": 0-100,
-                "waste_outside": true/false,
-                "waste_outside_description": "Description of waste outside bins"
-            }}
-        ],
-        "recyclable_items": [
-            {{ "item": "item name", "recyclable": true/false, "notes": "recycling notes" }}
-        ],
+        "dustbins": {{
+            "is_present": true/false,
+            "is_full": true/false,
+            "fullness_percentage": 0-100,
+            "waste_outside": true/false,
+            "waste_outside_description": "Description of waste outside bins"
+        }},
+        "recyclable_items": {{
+            "items": "item 1, item 2, item 3",
+            "recyclable": true/false,
+            "notes": "recycling notes"
+        }},
         "time_analysis": {{
             "time_appears_valid": true/false,
             "lighting_condition": "day/night/indoor/unclear",
@@ -287,10 +307,20 @@ async def validate_waste_image(
                     "is_valid": False,
                     "message": f"Error from Gemini API: HTTP {response.status_code}",
                     "confidence_score": 0,
-                    "waste_types": [],
-                    "severity": None,
-                    "dustbins": [],
-                    "recyclable_items": [],
+                    "waste_types": {"types": "", "confidence": 0.0},
+                    "severity": "Clean",
+                    "dustbins": {
+                        "is_present": False,
+                        "is_full": False,
+                        "fullness_percentage": 0,
+                        "waste_outside": False,
+                        "waste_outside_description": ""
+                    },
+                    "recyclable_items": {
+                        "items": "",
+                        "recyclable": False,
+                        "notes": ""
+                    },
                     "time_analysis": {},
                     "description_match": {},
                     "additional_data": {"error": error_detail, "url": api_url}
@@ -334,13 +364,23 @@ async def validate_waste_image(
                 if "confidence_score" not in validation_result:
                     validation_result["confidence_score"] = 0
                 if "waste_types" not in validation_result:
-                    validation_result["waste_types"] = []
+                    validation_result["waste_types"] = {"types": "", "confidence": ""}
                 if "severity" not in validation_result:
                     validation_result["severity"] = "Clean"
                 if "dustbins" not in validation_result:
-                    validation_result["dustbins"] = []
+                    validation_result["dustbins"] = {
+                        "is_present": False,
+                        "is_full": False,
+                        "fullness_percentage": 0,
+                        "waste_outside": False,
+                        "waste_outside_description": ""
+                    }
                 if "recyclable_items" not in validation_result:
-                    validation_result["recyclable_items"] = []
+                    validation_result["recyclable_items"] = {
+                        "items": "",
+                        "recyclable": False,
+                        "notes": ""
+                    }
                 if "time_analysis" not in validation_result:
                     validation_result["time_analysis"] = {}
                 if "description_match" not in validation_result:
@@ -359,16 +399,20 @@ async def validate_waste_image(
                     "is_valid": "yes" in response_text.lower(),
                     "message": "Manually extracted from non-JSON response",
                     "confidence_score": 50,  # Default score
-                    "waste_types": [],
+                    "waste_types": {"types": "", "confidence": 0.0},
                     "severity": "Clean",  # Default to Clean instead of Unknown
-                    "dustbins": [{
+                    "dustbins": {
                         "is_present": "dustbin" in response_text.lower(),
                         "is_full": False,
                         "fullness_percentage": 0,
                         "waste_outside": False,
                         "waste_outside_description": ""
-                    }],
-                    "recyclable_items": [],
+                    },
+                    "recyclable_items": {
+                        "items": "",
+                        "recyclable": False,
+                        "notes": ""
+                    },
                     "time_analysis": {
                         "time_appears_valid": True,
                         "lighting_condition": "day/night/indoor/unclear",
@@ -391,7 +435,7 @@ async def validate_waste_image(
                     if ":" in waste_section:
                         waste_types_text = waste_section.split(":", 1)[1].strip()
                         waste_types = [wt.strip() for wt in waste_types_text.split(",") if wt.strip()]
-                        manually_parsed["waste_types"] = [{"type": wt, "confidence": 0.5} for wt in waste_types]
+                        manually_parsed["waste_types"] = {"types": ", ".join(waste_types), "confidence": 0.5}
                 
                 # Try to extract severity
                 for severity in ["clean", "low", "medium", "high", "critical"]:
@@ -414,10 +458,20 @@ async def validate_waste_image(
             "is_valid": False,
             "message": f"Error validating image: {error_msg}",
             "confidence_score": 0,
-            "waste_types": [],
-            "severity": None,
-            "dustbins": [],
-            "recyclable_items": [],
+            "waste_types": {"types": "", "confidence": 0.0},
+            "severity": "Clean",
+            "dustbins": {
+                "is_present": False,
+                "is_full": False,
+                "fullness_percentage": 0,
+                "waste_outside": False,
+                "waste_outside_description": ""
+            },
+            "recyclable_items": {
+                "items": "",
+                "recyclable": False,
+                "notes": ""
+            },
             "time_analysis": {},
             "description_match": {},
             "additional_data": {

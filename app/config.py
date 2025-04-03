@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     # Gemini API settings
     GOOGLE_API_KEY: str
     
+    # Testing settings
+    BYPASS_AUTH: bool = False
+    
+    # Twilio Settings
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_PHONE_NUMBER: str = ""
+    ADMIN_PHONE_NUMBER: str = ""
+    
     class Config:
         env_file = ".env"
 

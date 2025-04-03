@@ -8,19 +8,43 @@ from app.crud import authority as authority_crud
 from app.crud import user as user_crud
 from app.security import create_access_token, verify_token
 from app.models import AuthorityCreate, Authority, AuthorityLogin, Token, GoogleUser
+from typing import Optional
+import os
 
 settings = get_settings()
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/authority/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/authority/login", auto_error=False)
 
 
 async def get_current_authority(token: str = Depends(oauth2_scheme)):
+    """
+    Get the current authenticated authority user.
+    
+    In development/testing, set the BYPASS_AUTH=true in the .env file to bypass authentication
+    """
+    # Check for bypass auth setting (for testing purposes)
+    bypass_auth = settings.BYPASS_AUTH
+    
+    # For testing: return a test authority if BYPASS_AUTH is true
+    if bypass_auth and (token is None or token == ""):
+        print("Authentication bypassed for testing")
+        return {
+            "_id": "test_id",
+            "username": "test_user",
+            "email": "test@example.com",
+            "role": "tester"
+        }
+    
+    # Standard authentication flow
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail="Not authenticated",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    if token is None:
+        raise credentials_exception
 
     payload = verify_token(token)
     if not payload:
@@ -34,6 +58,19 @@ async def get_current_authority(token: str = Depends(oauth2_scheme)):
     if authority is None:
         raise credentials_exception
     return authority
+
+
+# Optional auth for testing - doesn't raise exceptions
+async def get_optional_authority(token: str = Depends(oauth2_scheme)) -> Optional[dict]:
+    """
+    A dependency that attempts to get the current authority but returns None if it fails.
+    This allows the endpoints to work without authentication during testing.
+    """
+    try:
+        return await get_current_authority(token)
+    except HTTPException:
+        # For testing purposes only - bypass authentication if not authenticated
+        return None
 
 
 @router.post("/authority/register", response_model=Authority)
