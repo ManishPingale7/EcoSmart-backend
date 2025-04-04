@@ -320,4 +320,22 @@ class Benefit(BaseModel):
             datetime: lambda v: v.isoformat(),
             ObjectId: lambda v: str(v)
         }
+        arbitrary_types_allowed = True
+
+class PickupRequest(BaseModel):
+    id: Optional[str] = None
+    user_id: str
+    description: str
+    location: str
+    pickup_date: datetime
+    status: str = "pending"  # pending, confirmed, completed, cancelled
+    created_at: datetime = None
+    updated_at: datetime = None
+    notes: Optional[str] = None
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            ObjectId: lambda v: str(v)
+        }
         arbitrary_types_allowed = True 
