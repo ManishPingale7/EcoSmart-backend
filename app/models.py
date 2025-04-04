@@ -32,18 +32,36 @@ class TokenData(BaseModel):
     username: Optional[str] = None
     role: Optional[str] = None
 
+class BadgeLevel(str, Enum):
+    BRONZE = "bronze"
+    SILVER = "silver"
+    GOLD = "gold"
+
+class BadgeAddRequest(BaseModel):
+    user_id: str = Field(..., description="ID of the user to assign the badge to")
+    badge_level: BadgeLevel = Field(..., description="Badge level to assign (bronze, silver, gold)")
+
 class GoogleUser(BaseModel):
     email: EmailStr
     name: str
     picture: Optional[str] = None
     google_id: str
+    
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            ObjectId: lambda v: str(v)
+        }
 
 class WasteReportValidationRequest(BaseModel):
     image: str  # Base64 encoded image
     description: Optional[str] = None
     location: str  # Coordinates or address
     timestamp: datetime
-    
+    user_id: Optional[str] = None  # Optional ID of the user submitting the report
+
 class WasteType(BaseModel):
     types: str  # Comma-separated list of waste types
     confidence: str  # Comma-separated list of confidence values matching each waste type
@@ -120,6 +138,58 @@ class WasteReportComment(BaseModel):
     username: str
     role: str
     timestamp: datetime
+
+class Badge(BaseModel):
+    id: Optional[str] = Field(None, alias="_id")
+    name: str
+    description: str
+    level: BadgeLevel
+    required_reports: int
+    image_url: Optional[str] = None
+    rewards: Optional[List[Dict[str, Any]]] = []
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            ObjectId: lambda v: str(v)
+        }
+
+class UserBadge(BaseModel):
+    id: Optional[str] = Field(None, alias="_id")
+    user_id: str
+    badge_id: str
+    badge_name: str
+    badge_level: BadgeLevel
+    earned_at: datetime
+    claimed: bool = False
+    claimed_at: Optional[datetime] = None
+    
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            ObjectId: lambda v: str(v)
+        }
+
+class UserBadgeStats(BaseModel):
+    id: Optional[str] = Field(None, alias="_id")
+    user_id: str
+    total_reports: int = 0
+    badges_earned: List[str] = []
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            ObjectId: lambda v: str(v)
+        }
 
 class WasteReportStatus(str, Enum):
     PENDING = "pending"
@@ -202,4 +272,52 @@ class CleanupVerificationResponse(BaseModel):
     status: str  # "verified", "not_clean", or "location_mismatch"
     is_same_location: bool
     is_clean: bool
-    improvement_percentage: float 
+    improvement_percentage: float
+
+class DigitalWallet(BaseModel):
+    id: str
+    user_id: str
+    balance: int
+    created_at: datetime
+    updated_at: datetime
+    total_earned: int
+    total_spent: int
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            ObjectId: lambda v: str(v)
+        }
+        arbitrary_types_allowed = True
+
+class EcoCoinTransaction(BaseModel):
+    id: str
+    user_id: str
+    type: str  # "earn" or "spend"
+    amount: int
+    description: str
+    created_at: datetime
+    benefit_id: Optional[str] = None
+    benefit_details: Optional[Dict[str, Any]] = None
+    validity_days: Optional[int] = None
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            ObjectId: lambda v: str(v)
+        }
+        arbitrary_types_allowed = True
+
+class Benefit(BaseModel):
+    id: str
+    name: str
+    coins_required: int
+    description: str
+    validity_days: int
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            ObjectId: lambda v: str(v)
+        }
+        arbitrary_types_allowed = True 

@@ -4,6 +4,29 @@ from bson import ObjectId
 from app.database import users_collection
 from app.models import GoogleUser
 
+def serialize_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Serialize MongoDB document by converting ObjectIds to strings
+    and ensuring _id is available as id
+    """
+    if not doc:
+        return {}
+        
+    result = {}
+    for key, value in doc.items():
+        if isinstance(value, ObjectId):
+            result[key] = str(value)
+        elif isinstance(value, list) and value and all(isinstance(item, ObjectId) for item in value):
+            result[key] = [str(item) for item in value]
+        else:
+            result[key] = value
+    
+    # Ensure _id is converted to id
+    if "_id" in result:
+        result["id"] = result["_id"]
+    
+    return result
+
 async def create_user(user_data: dict) -> Dict[str, Any]:
     """Create a new user"""
     user_dict = {
@@ -19,11 +42,13 @@ async def create_user(user_data: dict) -> Dict[str, Any]:
 
 async def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     """Get user by email"""
-    return await users_collection.find_one({"email": email})
+    user = await users_collection.find_one({"email": email})
+    return serialize_mongo_doc(user)
 
 async def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
     """Get user by ID"""
-    return await users_collection.find_one({"_id": ObjectId(user_id)})
+    user = await users_collection.find_one({"_id": ObjectId(user_id)})
+    return serialize_mongo_doc(user)
 
 async def update_user(user_id: str, user_data: dict) -> Optional[Dict[str, Any]]:
     """Update user data"""
@@ -35,7 +60,8 @@ async def update_user(user_id: str, user_data: dict) -> Optional[Dict[str, Any]]
     )
     
     if result.modified_count:
-        return await get_user_by_id(user_id)
+        user = await get_user_by_id(user_id)
+        return user
     return None
 
 async def delete_user(user_id: str) -> bool:

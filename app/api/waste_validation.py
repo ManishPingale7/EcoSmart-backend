@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Query
 from typing import Optional
 from datetime import datetime
 from ..auth.router import get_optional_authority
 from ..models import WasteReportValidationRequest, WasteReportValidationResponse, WasteType, Dustbin, RecyclableItem, TimeAnalysis, DescriptionMatch, SeverityLevel, WasteReport
 from ..services.gemini_service import validate_waste_image
 from ..crud import waste_report as waste_report_crud
+from ..crud import user as user_crud
+from ..crud import badge as badge_crud
+from ..crud import digital_wallet as wallet_crud
 import base64
 from app.services.notification_service import notification_service
 import logging
@@ -14,6 +17,14 @@ router = APIRouter()
 
 # Set of severity levels that should be stored in the database
 STORE_SEVERITY_LEVELS = {SeverityLevel.MEDIUM, SeverityLevel.HIGH, SeverityLevel.CRITICAL}
+
+# Constants for coin rewards
+COINS_PER_REPORT = 10  # Base coins per report
+SEVERITY_MULTIPLIERS = {
+    "medium": 1.0,
+    "high": 1.5,
+    "critical": 2.0
+}
 
 # Create a function that returns None when testing to bypass authentication
 async def get_optional_authority(
@@ -31,99 +42,109 @@ async def get_optional_authority(
 
 async def save_report_if_severe(validation_result: dict, user_data: dict = None) -> Optional[dict]:
     """
-    Save a waste report to the database if its severity is Medium, High, or Critical
+    Save a waste report to the database if severity level warrants storage
     
     Args:
-        validation_result: The validated waste report data
-        user_data: Additional user/authority data to include
+        validation_result: The validation result data
+        user_data: Optional user data to associate with the report
         
     Returns:
-        The saved report or None if not saved
+        The saved waste report document or None if not saved
     """
-    # Check if severity meets the threshold for storing
+    # Only save reports with severity that requires action
     severity = validation_result.get("severity")
-    
-    if not severity or severity not in [level.value for level in STORE_SEVERITY_LEVELS]:
-        print(f"Report with severity '{severity}' not stored in database")
-        return None
-    
-    try:
-        # Prepare report data with all fields at top level
-        report_data = {
-            # Basic info
-            "is_valid": validation_result.get("is_valid", False),
-            "message": validation_result.get("message", ""),
-            "confidence_score": validation_result.get("confidence_score", 0),
-            "severity": severity,
-            
-            # Location and description
-            "location": validation_result.get("location", ""),
-            "description": validation_result.get("description", ""),
-            "timestamp": validation_result.get("timestamp", datetime.utcnow().isoformat()),
-            
-            # Store the original image
-            "image": validation_result.get("image", ""),  # Store the base64 image
-            
-            # Waste Types
-            "waste_types": validation_result.get("waste_types", {}).get("types", ""),
-            "waste_type_confidences": validation_result.get("waste_types", {}).get("confidence", ""),
-            
-            # Dustbins
-            "dustbin_present": validation_result.get("dustbins", {}).get("is_present", False),
-            "dustbin_full": validation_result.get("dustbins", {}).get("is_full"),
-            "dustbin_fullness_percentage": validation_result.get("dustbins", {}).get("fullness_percentage"),
-            "waste_outside": validation_result.get("dustbins", {}).get("waste_outside"),
-            "waste_outside_description": validation_result.get("dustbins", {}).get("waste_outside_description"),
-            
-            # Recyclable Items
-            "recyclable_items": validation_result.get("recyclable_items", {}).get("items", ""),
-            "is_recyclable": validation_result.get("recyclable_items", {}).get("recyclable", False),
-            "recyclable_notes": validation_result.get("recyclable_items", {}).get("notes"),
-            
-            # Time Analysis
-            "time_appears_valid": validation_result.get("time_analysis", {}).get("time_appears_valid", True),
-            "lighting_condition": validation_result.get("time_analysis", {}).get("lighting_condition"),
-            "time_analysis_notes": validation_result.get("time_analysis", {}).get("notes"),
-            
-            # Description Match
-            "description_matches_image": validation_result.get("description_match", {}).get("matches_image", True),
-            "description_match_confidence": validation_result.get("description_match", {}).get("confidence"),
-            "description_match_notes": validation_result.get("description_match", {}).get("notes"),
-            
-            # Additional Data
-            "additional_data": validation_result.get("additional_data", {}),
-            
-            # User Data
-            "submitted_by": user_data or {},
-            
-            # Status
-            "status": "pending"
-        }
-        
-        # Save to database
-        saved_report = await waste_report_crud.create_waste_report(report_data)
-        print(f"Saved waste report with ID: {saved_report.get('id')} and severity: {severity}")
-        
-        # Send notification to admin
-        try:
-            await notification_service.send_waste_report_alert(report_data)
-            logging.info(f"Notification sent for waste report {saved_report.get('id')}")
-        except Exception as e:
-            logging.error(f"Failed to send notification for waste report {saved_report.get('id')}: {str(e)}")
-        
-        # Make sure we return a serializable version of the report
-        return WasteReport.from_mongo(saved_report)
-    except Exception as e:
-        print(f"Error saving waste report: {str(e)}")
+    if severity not in STORE_SEVERITY_LEVELS:
+        print(f"Not saving report with severity {severity} (below threshold)")
         return None
 
-# Make authentication optional for testing
+    # Prepare report data
+    report_data = {
+        "is_valid": validation_result.get("is_valid", False),
+        "message": validation_result.get("message", "Validation failed"),
+        "confidence_score": validation_result.get("confidence_score", 0.0),
+        
+        # User provided data
+        "location": validation_result.get("location", ""),
+        "description": validation_result.get("description", ""),
+        "timestamp": datetime.fromisoformat(validation_result.get("timestamp", datetime.utcnow().isoformat())),
+        
+        # Store the image as a base64 encoded string
+        "image": validation_result.get("image"),
+        
+        # Severity
+        "severity": severity,
+        
+        # Waste Types
+        "waste_types": validation_result.get("waste_types", {}).get("types", ""),
+        "waste_type_confidences": validation_result.get("waste_types", {}).get("confidence", ""),
+        
+        # Dustbins
+        "dustbin_present": validation_result.get("dustbins", {}).get("is_present", False),
+        "dustbin_full": validation_result.get("dustbins", {}).get("is_full"),
+        "dustbin_fullness_percentage": validation_result.get("dustbins", {}).get("fullness_percentage"),
+        "waste_outside": validation_result.get("dustbins", {}).get("waste_outside"),
+        "waste_outside_description": validation_result.get("dustbins", {}).get("waste_outside_description"),
+        
+        # Recyclable Items
+        "recyclable_items": validation_result.get("recyclable_items", {}).get("items", ""),
+        "is_recyclable": validation_result.get("recyclable_items", {}).get("recyclable", False),
+        "recyclable_notes": validation_result.get("recyclable_items", {}).get("notes"),
+        
+        # Time Analysis
+        "time_appears_valid": validation_result.get("time_analysis", {}).get("time_appears_valid", True),
+        "lighting_condition": validation_result.get("time_analysis", {}).get("lighting_condition"),
+        "time_analysis_notes": validation_result.get("time_analysis", {}).get("notes"),
+        
+        # Description Match
+        "description_matches_image": validation_result.get("description_match", {}).get("matches_image", True),
+        "description_match_confidence": validation_result.get("description_match", {}).get("confidence"),
+        "description_match_notes": validation_result.get("description_match", {}).get("notes"),
+        
+        # Additional Data
+        "additional_data": validation_result.get("additional_data", {}),
+        
+        # User Data
+        "submitted_by": user_data or {},
+        
+        # Status
+        "status": "pending"
+    }
+    
+    # Save to database
+    saved_report = await waste_report_crud.create_waste_report(report_data)
+    print(f"Saved waste report with ID: {saved_report.get('id')} and severity: {severity}")
+    
+    # Update user badge stats if user_id is available
+    if user_data and user_data.get("user_id"):
+        user_id = user_data.get("user_id")
+        await badge_crud.increment_user_report_count(user_id)
+        
+        # Calculate and credit eco-friendly coins based on severity
+        base_coins = COINS_PER_REPORT
+        multiplier = SEVERITY_MULTIPLIERS.get(severity.lower(), 1.0)
+        coins_earned = int(base_coins * multiplier)
+        
+        # Credit coins to user's digital wallet
+        await wallet_crud.add_coins(
+            user_id=user_id,
+            amount=coins_earned,
+            description=f"Earned {coins_earned} eco-friendly coins for submitting a {severity} severity waste report"
+        )
+        
+        # Add coin information to the report's additional data
+        if not saved_report.get("additional_data"):
+            saved_report["additional_data"] = {}
+        saved_report["additional_data"]["coins_earned"] = coins_earned
+    
+    return saved_report
+
 @router.post("/validate", response_model=WasteReportValidationResponse)
 async def validate_waste_report(
     image: UploadFile = File(...),
     description: Optional[str] = Form(None),
     location: str = Form(...),
     timestamp: datetime = Form(...),
+    user_id: Optional[str] = Form(None, description="ID of the user submitting the report"),
     current_authority: Optional[dict] = Depends(get_optional_authority)
 ):
     """
@@ -133,6 +154,7 @@ async def validate_waste_report(
     - **description**: Optional description of the waste or area
     - **location**: Location where the image was taken (coordinates or address)
     - **timestamp**: When the image was taken
+    - **user_id**: (Optional) ID of the user submitting the report
     
     Returns a validation response with confidence score, waste types, and severity level.
     If severity is Medium, High, or Critical, the report is stored in the database.
@@ -181,7 +203,7 @@ async def validate_waste_report(
         validation_result["description"] = description
         validation_result["timestamp"] = timestamp.isoformat()
         validation_result["filename"] = image.filename
-        validation_result["image"] = base64_image  # Store the base64 image
+        validation_result["image"] = base64_image
         
         # Convert the validation result to our response model
         response = WasteReportValidationResponse(
@@ -224,9 +246,24 @@ async def validate_waste_report(
         
         # Save to database if severity is Medium, High, or Critical
         if response.severity in STORE_SEVERITY_LEVELS:
-            # Get user info if available (if auth is enabled)
+            # Prepare user data
             user_data = {}
-            if current_authority:
+            
+            # Prioritize explicitly provided user_id
+            if user_id:
+                # Get user info from database if possible
+                user = await user_crud.get_user_by_id(user_id)
+                if user:
+                    user_data = {
+                        "user_id": user_id,
+                        "username": user.get("name", "Unknown"),
+                        "email": user.get("email", "")
+                    }
+                else:
+                    # Still use the ID even if user not found
+                    user_data = {"user_id": user_id}
+            # Fall back to current authority if available
+            elif current_authority:
                 user_data = {
                     "user_id": str(current_authority.get("_id")),
                     "username": current_authority.get("username"),
@@ -240,8 +277,30 @@ async def validate_waste_report(
             if saved_report:
                 if not response.additional_data:
                     response.additional_data = {}
-                response.additional_data["report_id"] = saved_report.id
+                response.additional_data["report_id"] = saved_report.get("id")
                 response.additional_data["saved_to_database"] = True
+                
+                # Add information about the user badge if applicable
+                if user_id or (current_authority and current_authority.get("_id")):
+                    actual_user_id = user_id or str(current_authority.get("_id"))
+                    user_badge_stats = await badge_crud.get_user_badge_stats(actual_user_id)
+                    if user_badge_stats:
+                        # Get all user badges
+                        user_badges = await badge_crud.get_user_badges(actual_user_id)
+                        
+                        # Determine highest badge level
+                        badge_level_order = {"diamond": 5, "platinum": 4, "gold": 3, "silver": 2, "bronze": 1, None: 0}
+                        highest_badge = None
+                        highest_level = 0
+                        
+                        for badge in user_badges:
+                            level_value = badge_level_order.get(badge.get("badge_level"), 0)
+                            if level_value > highest_level:
+                                highest_level = level_value
+                                highest_badge = badge.get("badge_level")
+                        
+                        response.additional_data["user_badge_level"] = highest_badge
+                        response.additional_data["user_total_reports"] = user_badge_stats.get("total_reports", 0)
         
         return response
         
@@ -262,21 +321,23 @@ async def validate_waste_report(
             }
         )
 
-# TESTING ONLY: Comment out the current_authority dependency
-# To re-enable auth, uncomment the parameter below and update function calls
 @router.post("/validate-base64", response_model=WasteReportValidationResponse)
 async def validate_waste_report_base64(
     request: WasteReportValidationRequest,
+    user_id: Optional[str] = Query(None, description="ID of the user submitting the report"),
     current_authority: Optional[dict] = Depends(get_optional_authority)
 ):
     """
-    Validate a waste report using a base64-encoded image via Gemini AI
+    Validate a waste report using a base64-encoded image using Gemini AI
     
-    Request body:
-    - **image**: Base64 encoded image showing a potentially dirty/unclean area
+    Request body should include:
+    - **image**: Base64-encoded image string
     - **description**: Optional description of the waste or area
     - **location**: Location where the image was taken (coordinates or address)
     - **timestamp**: When the image was taken
+    
+    Query parameter:
+    - **user_id**: (Optional) ID of the user submitting the report
     
     Returns a validation response with confidence score, waste types, and severity level.
     If severity is Medium, High, or Critical, the report is stored in the database.
@@ -375,9 +436,24 @@ async def validate_waste_report_base64(
         
         # Save to database if severity is Medium, High, or Critical
         if response.severity in STORE_SEVERITY_LEVELS:
-            # Get user info if available (if auth is enabled)
+            # Prepare user data
             user_data = {}
-            if current_authority:
+            
+            # Prioritize explicitly provided user_id
+            if user_id:
+                # Get user info from database if possible
+                user = await user_crud.get_user_by_id(user_id)
+                if user:
+                    user_data = {
+                        "user_id": user_id,
+                        "username": user.get("name", "Unknown"),
+                        "email": user.get("email", "")
+                    }
+                else:
+                    # Still use the ID even if user not found
+                    user_data = {"user_id": user_id}
+            # Fall back to current authority if available
+            elif current_authority:
                 user_data = {
                     "user_id": str(current_authority.get("_id")),
                     "username": current_authority.get("username"),
@@ -391,8 +467,30 @@ async def validate_waste_report_base64(
             if saved_report:
                 if not response.additional_data:
                     response.additional_data = {}
-                response.additional_data["report_id"] = saved_report.id
+                response.additional_data["report_id"] = saved_report.get("id")
                 response.additional_data["saved_to_database"] = True
+                
+                # Add information about the user badge if applicable
+                if user_id or (current_authority and current_authority.get("_id")):
+                    actual_user_id = user_id or str(current_authority.get("_id"))
+                    user_badge_stats = await badge_crud.get_user_badge_stats(actual_user_id)
+                    if user_badge_stats:
+                        # Get all user badges
+                        user_badges = await badge_crud.get_user_badges(actual_user_id)
+                        
+                        # Determine highest badge level
+                        badge_level_order = {"diamond": 5, "platinum": 4, "gold": 3, "silver": 2, "bronze": 1, None: 0}
+                        highest_badge = None
+                        highest_level = 0
+                        
+                        for badge in user_badges:
+                            level_value = badge_level_order.get(badge.get("badge_level"), 0)
+                            if level_value > highest_level:
+                                highest_level = level_value
+                                highest_badge = badge.get("badge_level")
+                        
+                        response.additional_data["user_badge_level"] = highest_badge
+                        response.additional_data["user_total_reports"] = user_badge_stats.get("total_reports", 0)
         
         return response
         

@@ -1,9 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from .auth import router as auth_router
 from .api.routes import router as api_router
 from .api.waste_categorization import router as waste_categorization_router
 from .database import create_indexes
+from .config import get_settings
+
+# Get settings
+settings = get_settings()
 
 app = FastAPI(title="EcoSmart")
 
@@ -30,8 +34,11 @@ app.include_router(api_router)
 app.include_router(waste_categorization_router, prefix="/waste-categorization", tags=["Waste Categorization"])
 
 @app.on_event("startup")
-async def startup_event():
-    """Initialize database indexes on startup"""
+async def startup():
+    """
+    Run startup tasks when the application starts
+    """
+    print("Setting up database indexes...")
     await create_indexes()
 
 @app.get("/")

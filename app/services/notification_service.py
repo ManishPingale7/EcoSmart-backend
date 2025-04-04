@@ -45,13 +45,14 @@ class NotificationService:
             )
             
             # Send the message
-            self.client.messages.create(
-                body=message,
-                from_=self.from_number,
-                to=self.admin_number
-            )
+            #Currently disabled
+            # self.client.messages.create(
+            #     body=message,
+            #     from_=self.from_number,
+            #     to=self.admin_number
+            # )
             
-            logger.info(f"Successfully sent SMS alert to admin for waste report at {location}")
+            # logger.info(f"Successfully sent SMS alert to admin for waste report at {location}")
             return True
             
         except Exception as e:
