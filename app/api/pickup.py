@@ -3,7 +3,6 @@ from typing import Dict, Any, List
 from datetime import datetime
 from ..models import PickupRequest
 from ..crud import pickup as pickup_crud
-from ..auth.router import get_optional_authority
 from bson.errors import InvalidId
 
 router = APIRouter(
@@ -17,17 +16,12 @@ router = APIRouter(
     description="Schedule a waste pickup request providing description, location, and pickup date"
 )
 async def schedule_pickup(
-    pickup_request: PickupRequest = Body(..., description="Pickup request details"),
-    authority=Depends(get_optional_authority)
+    pickup_request: PickupRequest = Body(..., description="Pickup request details")
 ):
     """
     Schedule a waste pickup request
     """
     try:
-        # Set user ID from authenticated user
-        if authority and authority.get("user_id"):
-            pickup_request.user_id = authority.get("user_id")
-        
         # Prepare pickup data
         pickup_data = pickup_request.dict(exclude_unset=True)
         

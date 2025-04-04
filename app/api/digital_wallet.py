@@ -3,7 +3,6 @@ from typing import Dict, Any, List
 from datetime import datetime
 from ..models import DigitalWallet, EcoCoinTransaction, Benefit
 from ..crud import digital_wallet as wallet_crud
-from ..auth.router import get_optional_authority
 from bson.errors import InvalidId
 
 router = APIRouter(

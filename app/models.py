@@ -338,4 +338,43 @@ class PickupRequest(BaseModel):
             datetime: lambda v: v.isoformat(),
             ObjectId: lambda v: str(v)
         }
-        arbitrary_types_allowed = True 
+        arbitrary_types_allowed = True
+
+class CityStats(BaseModel):
+    id: Optional[str] = None
+    city_name: str
+    state: Optional[str] = None
+    country: Optional[str] = "India"
+    total_reports: int = 0
+    resolved_reports: int = 0
+    pending_reports: int = 0
+    total_users: int = 0
+    avg_response_time: Optional[float] = None  # in hours
+    response_rate: Optional[float] = None  # percentage
+    engagement_score: Optional[float] = None  # calculated score
+    total_score: Optional[float] = None  # overall score
+    last_updated: datetime = None
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            ObjectId: lambda v: str(v)
+        }
+        arbitrary_types_allowed = True
+
+class CityLeaderboard(BaseModel):
+    cities: List[Dict[str, Any]]
+    last_updated: datetime
+    scoring_explanation: Optional[Dict[str, str]] = None
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            ObjectId: lambda v: str(v)
+        }
+        arbitrary_types_allowed = True
+
+class UpdateCityRequest(BaseModel):
+    city: str
+    state: Optional[str] = None
+    country: Optional[str] = "India" 
