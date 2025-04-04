@@ -157,31 +157,54 @@ async def save_report_if_severe(validation_result: dict, user_data: dict = None)
 
 @router.post("/validate", response_model=WasteReportValidationResponse)
 async def validate_waste_report(
-    image: UploadFile = File(...),
-    description: Optional[str] = Form(None),
-    location: str = Form(...),
-    timestamp: datetime = Form(...),
-    user_id: Optional[str] = Form(None, description="ID of the user submitting the report"),
+    image: UploadFile = File(..., description="Image of waste or area to validate"),
+    description: str = Form(..., description="Description of the waste or area"),
+    location: str = Form(..., description="Location where the image was taken (coordinates or address)"), 
+    timestamp: datetime = Form(..., description="When the image was taken"),
+    user_id: Optional[str] = Query(None, description="ID of the user submitting the report"),
     current_authority: Optional[dict] = Depends(get_optional_authority)
 ):
     """
-    Validate a waste report image using Gemini AI
+    Validate a waste report using Gemini AI
     
-    - **image**: The image file showing a potentially dirty/unclean area
-    - **description**: Optional description of the waste or area
+    Form data should include:
+    - **image**: Image file of waste or area
+    - **description**: Description of the waste or area
     - **location**: Location where the image was taken (coordinates or address)
     - **timestamp**: When the image was taken
+    
+    Query parameter:
     - **user_id**: (Optional) ID of the user submitting the report
     
     Returns a validation response with confidence score, waste types, and severity level.
     If severity is Medium, High, or Critical, the report is stored in the database.
     """
     try:
-        # Validate image file
-        if not image.content_type or not image.content_type.startswith('image/'):
+        # Prepare user data
+        actual_user_id = user_id
+        
+        # Prioritize explicitly provided user_id, fall back to current authority
+        if not actual_user_id and current_authority:
+            actual_user_id = current_authority.get("user_id")
+        
+        # If we have a user ID, verify the user has a city set in their profile
+        if actual_user_id:
+            user = await user_crud.get_user_by_id(actual_user_id)
+            if user and not user.get("city"):
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": "City information is required to submit a complaint.",
+                        "error_code": "CITY_REQUIRED",
+                        "error_details": "Please update your profile with your city information before submitting a complaint."
+                    }
+                )
+        
+        # Validate the image
+        if not image.filename:
             raise HTTPException(
                 status_code=400,
-                detail=f"File must be an image. Received content type: {image.content_type}"
+                detail="Image file is required"
             )
             
         # Read the image file and convert to base64
@@ -360,6 +383,26 @@ async def validate_waste_report_base64(
     If severity is Medium, High, or Critical, the report is stored in the database.
     """
     try:
+        # Prepare user data
+        actual_user_id = user_id
+        
+        # Prioritize explicitly provided user_id, fall back to current authority
+        if not actual_user_id and current_authority:
+            actual_user_id = current_authority.get("user_id")
+        
+        # If we have a user ID, verify the user has a city set in their profile
+        if actual_user_id:
+            user = await user_crud.get_user_by_id(actual_user_id)
+            if user and not user.get("city"):
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": "City information is required to submit a complaint.",
+                        "error_code": "CITY_REQUIRED",
+                        "error_details": "Please update your profile with your city information before submitting a complaint."
+                    }
+                )
+        
         # Validate base64 image
         if not request.image:
             raise HTTPException(
